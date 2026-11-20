@@ -29,6 +29,29 @@
     ]
   };
 
+  /* ---------- hora del servicio (horario de Perú, UTC-5) ---------- */
+  function limaIso(dayOffset, hhmm) {
+    if (!/^\d{2}:\d{2}$/.test(hhmm || '')) throw new Error('Elige la hora para tu servicio.');
+    var l = new Date(Date.now() - 5 * 36e5 + (Number(dayOffset) || 0) * 864e5);
+    var iso = l.getUTCFullYear() + '-' + pad(l.getUTCMonth() + 1) + '-' + pad(l.getUTCDate()) + 'T' + hhmm + ':00-05:00';
+    var t = new Date(iso).getTime();
+    if (isNaN(t)) throw new Error('Hora inválida.');
+    if (t < Date.now() + 15 * 6e4) throw new Error('La hora debe ser al menos 15 minutos desde ahora.');
+    if (t > Date.now() + 24 * 36e5) throw new Error('Solo puedes programar hasta 24 horas por adelantado.');
+    return new Date(t).toISOString();
+  }
+  function whenText(s) {
+    if (!s.needed_at) return 'Ahora';
+    var d = new Date(s.needed_at);
+    var t = d.toLocaleTimeString('en-US', { timeZone: 'America/Lima', hour: 'numeric', minute: '2-digit', hour12: true });
+    var key = function (x) { return x.toLocaleDateString('en-CA', { timeZone: 'America/Lima' }); };
+    var k = key(d), day;
+    if (k === key(new Date())) day = 'hoy';
+    else if (k === key(new Date(Date.now() + 864e5))) day = 'mañana';
+    else day = d.toLocaleDateString('es-PE', { timeZone: 'America/Lima', day: '2-digit', month: '2-digit' });
+    return day + ' ' + t;
+  }
+
   var noticeTimer;
   function notice(msg, bad) {
     var n = $('#notice');
@@ -398,6 +421,15 @@
       }, { enableHighAccuracy: true, timeout: 10000 });
     });
 
+    function syncWhen() {
+      var w = (f.querySelector('input[name=when]:checked') || {}).value;
+      var o = $('#whenOther'), tm = f.elements['when_time'];
+      if (o) o.style.display = w === 'other' ? '' : 'none';
+      if (tm) tm.required = w === 'other';
+    }
+    $$('input[name=when]', f).forEach(function (r) { r.addEventListener('change', syncWhen); });
+    syncWhen();
+
     enablePhotoZoom();
     var box = $('#myServices'), lastSig = '';
     function offersHtml(list) {
@@ -418,6 +450,7 @@
       return '<div class="service-card"><div class="row"><span class="pill">' + TYPE[s.service_type] + '</span><span class="pill">' + ST[s.status] + '</span></div>' +
         '<p><b>' + place(s.origin) + '</b>' + (s.origin_reference ? ' <span class="muted">(' + esc(s.origin_reference) + ')</span>' : '') +
         '<br>→ ' + esc(s.destination) + '</p>' +
+        '<p>⏰ Para: <b>' + whenText(s) + '</b></p>' +
         '<p>' + (s.status === 'requested' ? 'Tu precio propuesto' : 'Precio acordado') + ': <b>' + money(s.final_price || s.proposed_price) + '</b> · Pago: ' + esc(s.payment_method) + '</p>' +
         (s.note ? '<p class="muted">' + esc(s.note) + '</p>' : '') +
         (s.status === 'requested' ? offersHtml(offers) : '') +
@@ -454,11 +487,15 @@
         var d = new FormData(f);
         var price = parseFloat(d.get('proposed_price'));
         if (!(price >= 0.5 && price <= 500)) throw new Error('El precio debe estar entre S/ 0.50 y S/ 500.');
+        if (!String(d.get('origin_reference') || '').trim()) throw new Error('Escribe una referencia del origen.');
+        var needed = null, w = d.get('when');
+        if (w === 'in30') needed = new Date(Date.now() + 30 * 6e4).toISOString();
+        else if (w === 'other') needed = limaIso(d.get('when_day'), d.get('when_time'));
         var row = {
           client_id: g.user.id, service_type: d.get('service_type'),
           origin: String(d.get('origin')).trim(), origin_reference: String(d.get('origin_reference') || '').trim() || null,
           destination: String(d.get('destination')).trim(), payment_method: d.get('payment_method'),
-          note: String(d.get('note') || '').trim() || null, proposed_price: price
+          note: String(d.get('note') || '').trim() || null, proposed_price: price, needed_at: needed
         };
         var r = await sb.from('services').insert(row);
         if (r.error) {
@@ -468,6 +505,7 @@
         }
         notice('Solicitud enviada. Espera la respuesta de un piloto.');
         f.reset();
+        syncWhen();
         lastSig = '';
         await refresh(true);
       });
@@ -546,6 +584,7 @@
       return '<div class="service-card"><div class="row"><span class="pill">' + TYPE[s.service_type] + '</span><b>' + money(s.proposed_price) + '</b></div>' +
         '<p><b>' + place(s.origin) + '</b>' + (s.origin_reference ? ' <span class="muted">(' + esc(s.origin_reference) + ')</span>' : '') +
         '<br>→ ' + esc(s.destination) + '</p>' +
+        '<p>⏰ Para: <b>' + whenText(s) + '</b></p>' +
         '<p class="muted">Cliente: ' + esc(s.client_name || '—') + ' · Pago: ' + esc(s.payment_method) + '</p>' +
         (s.note ? '<p class="muted">' + esc(s.note) + '</p>' : '') +
         (has ? '<p>Tu oferta: <b>' + money(mo.price) + '</b> · esperando que el cliente elija.</p>' : '') +
@@ -565,6 +604,7 @@
       return '<div class="service-card"><div class="row"><span class="pill">' + TYPE[s.service_type] + '</span><span class="pill">' + ST[s.status] + '</span></div>' +
         '<p><b>' + place(s.origin) + '</b>' + (s.origin_reference ? ' <span class="muted">(' + esc(s.origin_reference) + ')</span>' : '') +
         '<br>→ ' + esc(s.destination) + '</p>' +
+        '<p>⏰ Para: <b>' + whenText(s) + '</b></p>' +
         '<p>Precio: <b>' + money(s.final_price || s.proposed_price) + '</b> · Pago: ' + esc(s.payment_method) + '</p>' +
         (s.note ? '<p class="muted">' + esc(s.note) + '</p>' : '') +
         (c ? '<div class="details"><small class="muted">Cliente</small>' + contactHtml(c) + '</div>' : '') +
@@ -716,6 +756,7 @@
         if (p.account_status === 'active') btns += b('Suspender', 'suspended', 'danger');
         btns += '<button class="btn ghost small" data-a="edit" data-id="' + p.id + '" data-name="' + esc(p.full_name) + '" data-phone="' + esc(p.phone) + '">Editar</button>';
         btns += waLink(p.phone);
+        btns += '<button class="btn danger small" data-a="delete" data-id="' + p.id + '" data-n="' + esc(p.full_name) + '">Eliminar cuenta</button>';
         var act = actSub[p.id], pend = pendSub[p.id];
         var subTxt = act ? '<span class="ok">Suscripción vigente hasta ' + fdate(act.expires_at) + ' (' + planName(act.plan) + ')</span>'
           : pend ? '<span class="warn">Pago en revisión: ' + planName(pend.plan) + ' · ' + money(pend.amount) + '</span>' : '<span class="muted">Sin suscripción</span>';
@@ -789,7 +830,7 @@
           }
           return '<div class="admin-row"><div class="row"><div><b>' + TYPE[s.service_type] + '</b> · ' + esc(s.origin) + ' → ' + esc(s.destination) +
             '<small>Cliente: ' + nm(s.client_id) + ' · Piloto: ' + nm(s.transporter_id) + ' · ' + money(s.final_price || s.proposed_price) +
-            ' · ' + esc(s.payment_method) + (s.status === 'requested' ? ' · Ofertas: ' + (offCount[s.id] || 0) : '') + ' · ' + fdate(s.created_at) +
+            ' · ' + esc(s.payment_method) + ' · ⏰ ' + whenText(s) + (s.status === 'requested' ? ' · Ofertas: ' + (offCount[s.id] || 0) : '') + ' · ' + fdate(s.created_at) +
             '</small><small>ID: ' + s.id + '</small></div><span class="pill">' + ST[s.status] + '</span></div>' +
             (acts ? '<div class="actions">' + acts + '</div>' : '') + assign + '</div>';
         }).join('') : empty;
@@ -812,10 +853,10 @@
         subscription_rejected: 'Pago rechazado', complaint_status: 'Estado de reclamo',
         subscription_granted: 'Suscripción activada por admin', subscription_adjusted: 'Días de suscripción ajustados',
         subscription_revoked: 'Suscripción retirada', service_status: 'Estado de servicio cambiado',
-        service_assigned: 'Servicio asignado', profile_edited: 'Datos de usuario editados' };
+        service_assigned: 'Servicio asignado', profile_edited: 'Datos de usuario editados', account_deleted: 'Cuenta eliminada' };
       var auEl = $('#adminAudit');
       if (auEl) auEl.innerHTML = au.length ? au.map(function (a) {
-        var d = a.detail || {}, tgt = a.target_type === 'user' ? nm(a.target_id) : (d.user_id ? nm(d.user_id) : String(a.target_id || '').slice(0, 8));
+        var d = a.detail || {}, tgt = a.action === 'account_deleted' ? esc((d.name || '—') + (d.email ? ' (' + d.email + ')' : '')) : a.target_type === 'user' ? nm(a.target_id) : (d.user_id ? nm(d.user_id) : String(a.target_id || '').slice(0, 8));
         var det = d.days != null ? (d.days > 0 ? '+' : '') + d.days + ' días' :
           d.transporter_id ? 'a ' + nm(d.transporter_id) :
           d.to ? (d.from ? esc(d.from) + ' → ' + esc(d.to) : esc(d.to)) : (d.plan ? esc(d.plan) + (d.amount != null ? ' · ' + money(d.amount) : '') : '');
@@ -864,6 +905,11 @@
         if (!confirm('¿Asignar este servicio a ' + sel.options[sel.selectedIndex].text.replace(' (sin suscripción)', '') + '?')) return;
         extra = sel.value;
       }
+      if (a === 'delete') {
+        var typed = prompt('Vas a ELIMINAR la cuenta de ' + b.dataset.n + ' y todos sus datos (servicios, ofertas, suscripciones y reclamos). Esto NO se puede deshacer.\n\nEscribe ELIMINAR para confirmar:');
+        if (typed === null) return;
+        if (typed.trim().toUpperCase() !== 'ELIMINAR') { notice('No se eliminó la cuenta: no escribiste ELIMINAR.', true); return; }
+      }
       b.disabled = true;
       try {
         if (a === 'status') await rpc('admin_set_account_status', { p_user: id, p_status: v });
@@ -875,6 +921,7 @@
         else if (a === 'svc') await rpc('admin_set_service_status', { p_id: id, p_status: v });
         else if (a === 'assign') await rpc('admin_assign_service', { p_id: id, p_transporter: extra });
         else if (a === 'edit') await rpc('admin_update_profile', { p_user: id, p_full_name: extra.n, p_phone: extra.p });
+        else if (a === 'delete') await rpc('admin_delete_user', { p_user: id });
         notice('Cambio guardado.');
         await load();
       } catch (err) { notice(friendly(err), true); b.disabled = false; }
