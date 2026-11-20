@@ -468,7 +468,7 @@
                             type="number"
                             min="0.5"
                             step="0.5"
-                            value="3"
+                            value="6"
                             required
                         >
                     </label>
@@ -505,10 +505,12 @@
                     </div>
 
                     <label>
-                        Referencia del origen (opcional)
+                        Referencia del origen
 
                         <input
                             name="origin_reference"
+                            required
+                            maxlength="200"
                             placeholder="Ej. puerta azul, frente al mercado"
                         >
                     </label>
@@ -522,6 +524,31 @@
                             placeholder="Dirección de destino"
                         >
                     </label>
+
+                    <fieldset style="grid-column:1/-1;border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:0">
+                        <legend>¿Para cuándo lo necesitas?</legend>
+
+                        <div class="checkrow">
+                            <label><input type="radio" name="when" value="now" checked required> Ahora</label>
+                            <label><input type="radio" name="when" value="in30"> En 30 minutos</label>
+                            <label><input type="radio" name="when" value="other"> Otra hora</label>
+                        </div>
+
+                        <div id="whenOther" class="grid" style="margin-top:10px;display:none">
+                            <label>
+                                Día
+                                <select name="when_day">
+                                    <option value="0">Hoy</option>
+                                    <option value="1">Mañana</option>
+                                </select>
+                            </label>
+
+                            <label>
+                                Hora
+                                <input name="when_time" type="time">
+                            </label>
+                        </div>
+                    </fieldset>
 
                     <label>
                         Forma de pago
