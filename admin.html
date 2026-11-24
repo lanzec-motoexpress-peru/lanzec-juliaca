@@ -448,6 +448,22 @@
         .grid.three { gap: 6px }
         .admin-jump a { padding: 6px 9px }
         .shell { margin: 8px auto 30px }
+
+        /* ===== Panel admin compacto: pestañas, cuadros, tarjetas ===== */
+        .tabsec { display: none }
+        .tabsec.on { display: block }
+        .admin-jump { flex-wrap: wrap !important; overflow: visible !important; position: static !important }
+        .admin-jump a { flex: 1 1 30% !important; text-align: center; padding: 6px 4px !important; font-size: .8rem }
+        .admin-jump a.on { background: var(--cyan, #1fd1e0); color: #00121a; border-color: transparent }
+        #stats { gap: 6px; margin-top: 8px }
+        #stats .stat { padding: 6px 4px; text-align: center }
+        #stats .stat b { display: block; font-size: 1.1rem }
+        #stats .stat span { font-size: .64rem; line-height: 1.1; display: block }
+        .urow { display: flex; gap: 10px; align-items: center }
+        .urow .avatar { width: 48px !important; height: 48px !important; flex: 0 0 auto; border-radius: 50%; object-fit: cover }
+        .urow .nm { flex: 1; min-width: 0 }
+        .admin-row small { display: block; font-size: .76rem }
+        .section-title { font-size: 1rem; margin: 10px 0 4px }
         @media(max-width:760px) { body { font-size: 15px } .topbar { padding: 8px 12px } .actions .btn { padding: 7px 8px } }
     </style>
 </head>
@@ -477,55 +493,60 @@
 
         <h1 id="welcome">Panel de administración</h1>
 
-        <div id="attention"></div>
-
         <div id="stats" class="grid three"></div>
 
         <div class="admin-tools">
-            <input id="adminSearch" type="search" placeholder="Buscar: nombre, correo, celular, DNI, placa">
+            <input id="adminSearch" type="search" placeholder="Buscar nombre, DNI, celular, placa…">
             <button id="adminRefresh" class="btn secondary small" type="button">⟳</button>
         </div>
         <small id="adminUpdated" class="muted"></small>
-        <div class="actions" style="margin:6px 0 0">
-            <button class="btn ghost small" type="button" data-csv="usuarios">Descargar usuarios (CSV)</button>
-            <button class="btn ghost small" type="button" data-csv="servicios">Descargar servicios (CSV)</button>
-            <button class="btn ghost small" type="button" data-csv="pagos">Descargar pagos (CSV)</button>
-        </div>
 
         <nav class="admin-jump">
             <a class="btn ghost small" href="#sec-clientes">Clientes</a>
             <a class="btn ghost small" href="#sec-transportistas">Pilotos</a>
-            <a class="btn ghost small" href="#sec-pagos">Pagos</a>
             <a class="btn ghost small" href="#sec-servicios">Servicios</a>
+            <a class="btn ghost small" href="#sec-pagos">Pagos</a>
             <a class="btn ghost small" href="#sec-reclamos">Reclamos</a>
             <a class="btn ghost small" href="#sec-auditoria">Auditoría</a>
         </nav>
 
-        <h2 class="section-title" id="sec-clientes">Clientes <small id="cnt-clients"></small></h2>
-        <div id="adminClients"></div>
+        <div class="tabsec" id="tab-sec-clientes">
+            <h2 class="section-title" id="sec-clientes">Clientes <small id="cnt-clients"></small></h2>
+            <div id="adminClients"></div>
+        </div>
 
-        <h2 class="section-title" id="sec-transportistas">Pilotos <small id="cnt-trs"></small></h2>
-        <div id="adminTransporters"></div>
+        <div class="tabsec" id="tab-sec-transportistas">
+            <h2 class="section-title" id="sec-transportistas">Pilotos <small id="cnt-trs"></small></h2>
+            <div id="adminTransporters"></div>
+        </div>
 
-        <h2 class="section-title" id="sec-pagos">Pagos y suscripciones</h2>
-        <div id="adminSubscriptions"></div>
+        <div class="tabsec" id="tab-sec-pagos">
+            <h2 class="section-title" id="sec-pagos">Pagos y suscripciones</h2>
+            <div id="adminSubscriptions"></div>
+        </div>
 
-        <h2 class="section-title" id="sec-servicios">Servicios</h2>
-        <select id="svFilter">
-            <option value="">Todos los estados</option>
-            <option value="requested">Solicitados</option>
-            <option value="accepted">Aceptados</option>
-            <option value="in_progress">En curso</option>
-            <option value="completed">Finalizados</option>
-            <option value="cancelled">Cancelados</option>
-        </select>
-        <div id="adminServices"></div>
+        <div class="tabsec" id="tab-sec-servicios">
+            <h2 class="section-title" id="sec-servicios">Servicios</h2>
+            <select id="svFilter">
+                <option value="">Todos los estados</option>
+                <option value="requested">Solicitados</option>
+                <option value="accepted">Aceptados</option>
+                <option value="in_progress">En curso</option>
+                <option value="completed">Finalizados</option>
+                <option value="cancelled">Cancelados</option>
+            </select>
+            <div id="adminServices"></div>
+        </div>
 
-        <h2 class="section-title" id="sec-reclamos">Reclamos</h2>
-        <div id="adminComplaints"></div>
+        <div class="tabsec" id="tab-sec-reclamos">
+            <h2 class="section-title" id="sec-reclamos">Reclamos</h2>
+            <div id="adminComplaints"></div>
+        </div>
 
-        <h2 class="section-title" id="sec-auditoria">Registro de auditoría</h2>
-        <div id="adminAudit"></div>
+        <div class="tabsec" id="tab-sec-auditoria">
+            <h2 class="section-title" id="sec-auditoria">Registro de auditoría</h2>
+            <div id="adminAudit"></div>
+        </div>
 
         <p class="note">
             La aprobación de piloto y la activación de suscripción
