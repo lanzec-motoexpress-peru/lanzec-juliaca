@@ -332,7 +332,8 @@
           meta.service_types = d.getAll('service_types');
           if (!meta.service_types.length) throw new Error('Selecciona Mototaxi, Delivery o ambos.');
           file = f.profile_photo && f.profile_photo.files[0] ? f.profile_photo.files[0] : null;
-          if (file) checkPhoto(file);
+          if (!file) throw new Error('Sube la foto de tu moto.');
+          checkPhoto(file);
         }
         var r = await sb.auth.signUp({ email: v('email').toLowerCase(), password: pw, options: { data: meta } });
         if (r.error) throw r.error;
@@ -488,9 +489,14 @@
         JSON.stringify((of.data || []).map(function (o) { return [o.offer_id, o.price]; })) + contacts.size;
       if (sig === lastSig && !force) return;
       lastSig = sig;
-      box.innerHTML = r.data.length ? r.data.map(function (s) { return card(s, byS[s.id] || []); }).join('') : '<div class="empty">Aún no has solicitado servicios.</div>';
+      var isAct = function (s) { return ['requested', 'countered', 'accepted', 'in_progress'].indexOf(s.status) >= 0; };
+      var act = r.data.filter(isAct), hist = r.data.filter(function (s) { return !isAct(s); });
+      var ab = $('#activeBox'), ac = $('#activeServices');
+      if (ab && ac) { ab.style.display = act.length ? '' : 'none'; ac.innerHTML = act.map(function (s) { return card(s, byS[s.id] || []); }).join(''); }
+      box.innerHTML = hist.length ? hist.map(function (s) { return card(s, byS[s.id] || []); }).join('') : '<div class="empty">Aún no tienes servicios anteriores.</div>';
     }, 8000);
     bindActions(box, function () { lastSig = ''; return refresh(true); });
+    if ($('#activeServices')) bindActions($('#activeServices'), function () { lastSig = ''; return refresh(true); });
     live(['services'], function () { refresh(); });
 
     f.addEventListener('submit', function (e) {
@@ -531,19 +537,20 @@
     var uid = g.user.id;
     adaptNav(g.profile);
     if (window.LanzecPush) window.LanzecPush.init(sb, notice);
-    $('#welcome').textContent = 'Hola, ' + g.profile.full_name.split(' ')[0];
+    $('#welcome').textContent = g.profile.full_name;
     var blocked = statusBlock(g.profile);
     var hasSub = await countdown(uid);
     var box = $('#requests');
 
     var tp = await sb.from('transporter_profiles').select('*').eq('user_id', uid).maybeSingle();
     var t = tp.data;
+    if (t && $('#motoLine')) $('#motoLine').textContent = [t.motorcycle, t.plate, t.motorcycle_color].filter(Boolean).join(' · ');
     enablePhotoZoom();
     var avatar = null;
     function setAvatar(path) {
       var url = photoUrl(path);
       if (!avatar) {
-        $('#welcome').insertAdjacentHTML('beforebegin', '<img class="avatar" id="myAvatar" alt="Tu foto" title="Toca para ver tu foto" style="width:100px;height:100px;object-fit:cover;cursor:zoom-in">');
+        ($('#avatarSlot') || $('#welcome').parentNode).insertAdjacentHTML($('#avatarSlot') ? 'beforeend' : 'afterbegin', '<img class="avatar" id="myAvatar" alt="Tu foto" title="Toca para ver tu foto" style="width:64px;height:64px;object-fit:cover;cursor:zoom-in">');
         avatar = $('#myAvatar');
       }
       avatar.src = url;
@@ -552,16 +559,16 @@
     }
     if (t && t.photo_path) setAvatar(t.photo_path);
     if (t) {
-      var pc = document.createElement('section');
-      pc.className = 'card';
-      pc.innerHTML = '<h2>' + (t.photo_path ? 'Cambiar foto de perfil' : 'Foto de perfil') + '</h2>' +
+      var pc = document.createElement('details');
+      pc.className = 'card fotobar';
+      pc.innerHTML = '<summary>' + (t.photo_path ? 'Cambiar foto de perfil' : 'Foto de perfil') + '</summary><div class="inner">' +
         '<p class="muted">' + (t.photo_path ? 'Elige una foto nueva: verás cómo queda antes de guardarla. ' : 'Sube tu foto para que los clientes te reconozcan. ') + 'JPG, PNG o WEBP, máx. 5 MB.</p>' +
         '<form><div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">' +
         '<img id="photoPrev" alt="Vista previa" hidden style="width:96px;height:96px;border-radius:50%;object-fit:cover;border:2px solid var(--cyan)">' +
         '<input type="file" accept="image/jpeg,image/png,image/webp" required style="flex:1 1 220px"></div>' +
-        '<button class="btn" type="submit">Guardar foto</button></form>';
-      var acd = $('#availCard');
-      $('main').insertBefore(pc, acd ? acd.nextSibling : $('main section.card'));
+        '<button class="btn" type="submit">Guardar foto</button></form></div>';
+      var rl = $('main > a.btn.ghost[href="reclamos.html"]');
+      $('main').insertBefore(pc, rl);
       var pf = $('form', pc), pin = $('input', pf), prev = $('#photoPrev', pc), prevUrl = null;
       function clearPrev() {
         if (prevUrl) { URL.revokeObjectURL(prevUrl); prevUrl = null; }
@@ -584,7 +591,7 @@
           setAvatar(path);
           pin.value = '';
           clearPrev();
-          $('h2', pc).textContent = 'Cambiar foto de perfil';
+          $('summary', pc).textContent = 'Cambiar foto de perfil';
           notice('Foto actualizada correctamente.');
         });
       });
@@ -600,10 +607,11 @@
       var st = $('#availStatus'), info = $('#schedInfo'), b1 = $('#btnAvail'), b2 = $('#btnUnavail');
       if (!st) return;
       st.innerHTML = amAvail
-        ? '<b style="color:#35d58a">Disponible</b> <span class="muted">· recibes solicitudes y avisos</span>'
-        : '<b style="color:#ff6577">No disponible</b> <span class="muted">· no recibes solicitudes ni avisos</span>';
+        ? '<b style="color:#35d58a">Disponible</b>'
+        : '<b style="color:#ff6577">No disponible</b>';
       var s = schedT && schedT.sched_start && schedT.sched_end && new Date(schedT.sched_end) > Date.now() ? schedT : null;
-      info.textContent = s ? 'Horario de hoy: ' + hm(s.sched_start) + ' a ' + hm(s.sched_end) + ' (se activa y se desactiva solo)' : 'Sin horario programado para hoy.';
+      info.textContent = s ? 'Horario: ' + hm(s.sched_start) + ' a ' + hm(s.sched_end) : '';
+      var cb = $('#btnClearSched'); if (cb) cb.style.display = s ? '' : 'none';
       b1.style.opacity = amAvail ? '1' : '.55'; b2.style.opacity = amAvail ? '.55' : '1';
       b1.style.outline = amAvail ? '2px solid #fff' : 'none'; b2.style.outline = amAvail ? 'none' : '2px solid #fff';
     }
@@ -822,14 +830,15 @@
       var availNow = null;
       try { var ar = await sb.rpc('admin_available_pilots'); if (!ar.error && ar.data) availNow = ar.data; } catch (e) { }
       var stats = [
-        availNow ? [availNow.available + ' de ' + availNow.active, 'Pilotos disponibles ahora'] : null,
-        [clients.length, 'Clientes'], [trs.length, 'Pilotos'],
-        [trs.filter(function (p) { return p.account_status === 'pending'; }).length, 'Pilotos por aprobar'],
-        [su.filter(function (s) { return s.status === 'pending'; }).length, 'Pagos pendientes'],
-        [Object.keys(actSub).length, 'Suscripciones vigentes'],
-        [money(monthIncome), 'Ingresos del mes'],
-        [sv.filter(function (s) { return s.status === 'accepted' || s.status === 'in_progress'; }).length, 'Servicios en curso'],
-        [sv.length, 'Servicios (total)'], [co.filter(function (c) { return c.status !== 'resolved'; }).length, 'Reclamos abiertos']
+        [clients.length, 'Clientes'],
+        [trs.filter(function (p) { return p.account_status === 'active'; }).length, 'Pilotos'],
+        [availNow ? availNow.available : '—', 'Disponibles'],
+        [su.filter(function (s) { return s.status === 'pending'; }).length, 'Suscripciones'],
+        [money(monthIncome), 'Ingreso del mes'],
+        [co.filter(function (c) { return c.status !== 'resolved'; }).length, 'Reclamos'],
+        [sv.filter(function (s) { return s.status === 'requested'; }).length, 'Nuevas solicitudes'],
+        [sv.filter(function (s) { return s.status === 'accepted' || s.status === 'in_progress'; }).length, 'En curso'],
+        [sv.length, 'Servicios total']
       ];
       $('#stats').innerHTML = stats.filter(Boolean).map(function (s) { return '<div class="stat"><b>' + s[0] + '</b><span>' + s[1] + '</span></div>'; }).join('');
 
@@ -837,38 +846,12 @@
       var pendTr = trs.filter(function (p) { return p.account_status === 'pending'; }).length;
       var pendPay = su.filter(function (s) { return s.status === 'pending'; }).length;
       var openCo = co.filter(function (c) { return c.status !== 'resolved'; }).length;
-      var chip = function (n, label, href) {
-        return '<a class="btn small ' + (n ? '' : 'ghost') + '" href="' + href + '">' + label + ': ' + n + '</a>';
-      };
-      var attEl = $('#attention');
-      if (attEl) attEl.innerHTML = '<div class="card" style="padding:8px 12px;margin:8px 0"><b style="font-size:.92rem">' +
-        ((pendTr + pendPay + openCo) ? 'Requiere tu atención' : 'Todo al día') + '</b><div class="actions" style="margin-top:6px">' +
-        chip(pendTr, 'Pilotos por aprobar', '#sec-transportistas') + chip(pendPay, 'Pagos por revisar', '#sec-pagos') +
-        chip(openCo, 'Reclamos abiertos', '#sec-reclamos') + '</div></div>';
-
       var badge = function (href, base, n) {
         var a = document.querySelector('.admin-jump a[href="' + href + '"]');
         if (a) a.textContent = base + (n ? ' (' + n + ')' : '');
       };
       badge('#sec-transportistas', 'Pilotos', pendTr); badge('#sec-pagos', 'Pagos', pendPay);
       badge('#sec-reclamos', 'Reclamos', openCo);
-
-      /* --- datos para exportar a CSV --- */
-      var rawName = function (id) { var u = U.get(id); return u ? u.full_name : ''; };
-      view.csv = {
-        usuarios: [['Nombre', 'Correo', 'Celular', 'DNI', 'Edad', 'Rol', 'Estado', 'Registrado', 'Moto', 'Placa', 'Color', 'Servicios que ofrece', 'Suscripción vigente hasta']].concat(pr.map(function (p) {
-          var t = T.get(p.id), a = actSub[p.id];
-          return [p.full_name, p.email, p.phone, p.dni, p.age, p.role, p.account_status, fdate(p.created_at),
-            t ? t.motorcycle : '', t ? t.plate : '', t ? t.motorcycle_color : '', t ? (t.service_types || []).join(' / ') : '', a ? fdate(a.expires_at) : ''];
-        })),
-        servicios: [['ID', 'Tipo', 'Origen', 'Destino', 'Cliente', 'Piloto', 'Precio S/', 'Pago', 'Estado', 'Para cuándo', 'Creado']].concat(sv.map(function (s) {
-          return [s.id, TYPE[s.service_type], s.origin, s.destination, rawName(s.client_id), rawName(s.transporter_id), s.final_price || s.proposed_price, s.payment_method, ST[s.status] || s.status, whenText(s), fdate(s.created_at)];
-        })),
-        pagos: [['Usuario', 'Rol', 'Plan', 'Monto S/', 'Días', 'Estado', 'Solicitada', 'Vence']].concat(su.map(function (s) {
-          var u = U.get(s.user_id);
-          return [rawName(s.user_id), u ? u.role : '', planName(s.plan), s.amount, s.days, s.status, fdate(s.created_at), s.expires_at ? fdate(s.expires_at) : ''];
-        }))
-      };
 
       function userRow(p) {
         var t = T.get(p.id), btns = '', sbtns = '';
@@ -890,11 +873,13 @@
           sbtns += '<button class="btn ghost small" data-a="adjust" data-id="' + p.id + '">± Días</button>' +
             '<button class="btn danger small" data-a="revoke" data-id="' + p.id + '" data-n="' + esc(p.full_name) + '">Quitar</button>';
         }
-        return '<div class="admin-row"><div class="row"><div>' +
-          (t && t.photo_path ? '<img class="avatar" alt="Foto de ' + esc(p.full_name) + '" title="Toca para ver la foto" data-zoom="' + esc(photoUrl(t.photo_path)) + '" data-caption="' + esc(p.full_name) + '" src="' + esc(photoUrl(t.photo_path)) + '" style="width:56px;height:56px;cursor:zoom-in"><br>' : '') +
-          '<b>' + esc(p.full_name) + '</b><small>' + esc(p.email) + ' · Cel ' + esc(p.phone) + ' · DNI ' + esc(p.dni) + ' · ' + esc(p.age) + ' años · ' + fdate(p.created_at) + '</small>' +
-          (t ? '<small>Moto: ' + esc(t.motorcycle) + ' · ' + esc(t.motorcycle_color) + ' · Placa ' + esc(t.plate) + ' · ' + esc((t.service_types || []).join(', ')) + '</small>' : '') +
-          '</div><span class="pill">' + (SL[p.account_status] || esc(p.account_status)) + '</span></div>' +
+        var ph = t && t.photo_path ? '<img class="avatar" alt="Foto de ' + esc(p.full_name) + '" title="Toca para ver la foto" data-zoom="' + esc(photoUrl(t.photo_path)) + '" data-caption="' + esc(p.full_name) + '" src="' + esc(photoUrl(t.photo_path)) + '" style="cursor:zoom-in">' : '';
+        return '<div class="admin-row"><div class="urow">' + ph +
+          '<div class="nm"><b>' + esc(p.full_name) + '</b></div><span class="pill">' + (SL[p.account_status] || esc(p.account_status)) + '</span></div>' +
+          '<small>Cel ' + esc(p.phone) + ' · DNI ' + esc(p.dni) + ' · ' + esc(p.age) + ' años</small>' +
+          '<small>' + esc(p.email) + '</small>' +
+          (t ? '<small>' + esc(t.motorcycle) + ' · ' + esc(t.motorcycle_color) + ' · Placa ' + esc(t.plate) + '</small><small>' + esc((t.service_types || []).join(', ')) + '</small>' : '') +
+          '<small>Registrado ' + fdate(p.created_at) + '</small>' +
           (p.role === 'transporter' ? '<small>' + subTxt + '</small>' : '') +
           '<div class="actions">' + btns + '</div>' +
           (sbtns ? '<div class="actions">' + sbtns + '</div>' : '') + '</div>';
@@ -923,7 +908,10 @@
 
       var SS = { pending: 'En revisión', active: 'Activa', rejected: 'Rechazada' };
       var ordered = su.slice().sort(function (a, b) { return (b.status === 'pending') - (a.status === 'pending'); });
-      $('#adminSubscriptions').innerHTML = ordered.length ? ordered.map(function (s) {
+      function renderSubs() {
+      var q3 = norm((($('#adminSearch') || {}).value || '').trim());
+      var ordered2 = q3 ? ordered.filter(function (s) { return norm(nm(s.user_id)).indexOf(q3) >= 0; }) : ordered;
+      $('#adminSubscriptions').innerHTML = ordered2.length ? ordered2.map(function (s) {
         var u = U.get(s.user_id);
         return '<div class="admin-row"><div class="row"><div><b>' + nm(s.user_id) + '</b> <small>(' + (u && u.role === 'client' ? 'cliente' : 'piloto') + ')</small>' +
           '<small>Plan solicitado: <b>' + planName(s.plan) + '</b> · ' + money(s.amount) + ' · ' + s.days + ' días</small>' +
@@ -932,11 +920,16 @@
           (s.status === 'pending' ? '<div class="actions"><button class="btn small" data-a="sub" data-id="' + s.id + '" data-v="1">Aprobar ' + planName(s.plan) + ' ' + money(s.amount) + '</button>' +
             '<button class="btn danger small" data-a="sub" data-id="' + s.id + '" data-v="0">Rechazar</button>' + waLink(u && u.phone) + '</div>' : '') + '</div>';
       }).join('') : empty;
+      }
+      view.renderSubs = renderSubs;
+      renderSubs();
 
       var activeTr = trs.filter(function (p) { return p.account_status === 'active'; });
       function renderServices() {
         var fl = ($('#svFilter') || {}).value || '';
+        var q2 = norm((($('#adminSearch') || {}).value || '').trim());
         var list = fl ? sv.filter(function (s) { return s.status === fl; }) : sv;
+        if (q2) list = list.filter(function (s) { return norm([s.origin, s.destination, nm(s.client_id), nm(s.transporter_id), s.id].join(' ')).indexOf(q2) >= 0; });
         $('#adminServices').innerHTML = list.length ? list.map(function (s) {
           var acts = '';
           var sb2 = function (label, v, cls) { return '<button class="btn ' + (cls || '') + ' small" data-a="svc" data-id="' + s.id + '" data-v="' + v + '">' + label + '</button>'; };
@@ -991,7 +984,7 @@
     }
 
     var sInp = $('#adminSearch'), fSel = $('#svFilter'), rBtn = $('#adminRefresh');
-    if (sInp) sInp.addEventListener('input', function () { if (view.renderUsers) view.renderUsers(); });
+    if (sInp) sInp.addEventListener('input', function () { if (view.renderUsers) view.renderUsers(); if (view.renderServices) view.renderServices(); if (view.renderSubs) view.renderSubs(); });
     if (fSel) fSel.addEventListener('change', function () { if (view.renderServices) view.renderServices(); });
     if (rBtn) rBtn.addEventListener('click', async function () {
       rBtn.disabled = true;
@@ -1049,26 +1042,20 @@
       } catch (err) { notice(friendly(err), true); b.disabled = false; }
     });
 
-    function csvDownload(name, rows) {
-      var txt = rows.map(function (r) {
-        return r.map(function (v) {
-          v = v == null ? '' : String(v);
-          if (/^[=+\-@\t\r]/.test(v)) v = "'" + v;
-          return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
-        }).join(',');
-      }).join('\r\n');
-      var a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob(['\ufeff' + txt], { type: 'text/csv;charset=utf-8' }));
-      a.download = 'lanzec-' + name + '-' + new Date().toISOString().slice(0, 10) + '.csv';
-      document.body.appendChild(a); a.click();
-      setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+    /* pestañas: se muestra una sección a la vez */
+    var tabLinks = $$('.admin-jump a');
+    function showTab(id) {
+      if (!$('#tab-' + id)) id = 'sec-transportistas';
+      $$('.tabsec').forEach(function (el) { el.classList.toggle('on', el.id === 'tab-' + id); });
+      tabLinks.forEach(function (a) { a.classList.toggle('on', a.getAttribute('href') === '#' + id); });
+      try { sessionStorage.setItem('adminTab', id); } catch (e) { }
     }
-    document.addEventListener('click', function (e) {
-      var b = e.target.closest('[data-csv]');
-      if (!b) return;
-      if (!view.csv || !view.csv[b.dataset.csv]) { notice('Los datos aún se están cargando.', true); return; }
-      csvDownload(b.dataset.csv, view.csv[b.dataset.csv]);
+    tabLinks.forEach(function (a) {
+      a.addEventListener('click', function (e) { e.preventDefault(); showTab(a.getAttribute('href').slice(1)); });
     });
+    var firstTab = 'sec-transportistas';
+    try { firstTab = sessionStorage.getItem('adminTab') || firstTab; } catch (e) { }
+    showTab(firstTab);
 
     await load();
 
