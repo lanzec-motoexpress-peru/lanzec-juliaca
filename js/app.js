@@ -251,6 +251,18 @@
     });
   }
 
+  /* ---------- tiempo real (Supabase Realtime) ---------- */
+  function live(tables, cb) {
+    try {
+      var t, ch = sb.channel('live-' + Math.random().toString(36).slice(2));
+      tables.forEach(function (tb) {
+        ch.on('postgres_changes', { event: '*', schema: 'public', table: tb }, function () { clearTimeout(t); t = setTimeout(cb, 400); });
+      });
+      ch.subscribe();
+      return ch;
+    } catch (e) { console.warn('realtime', e); return null; }
+  }
+
   function poll(fn, ms) {
     var busy = false, failed = false;
     var run = async function (force) {
@@ -479,6 +491,7 @@
       box.innerHTML = r.data.length ? r.data.map(function (s) { return card(s, byS[s.id] || []); }).join('') : '<div class="empty">Aún no has solicitado servicios.</div>';
     }, 8000);
     bindActions(box, function () { lastSig = ''; return refresh(true); });
+    live(['services'], function () { refresh(); });
 
     f.addEventListener('submit', function (e) {
       e.preventDefault();
@@ -547,7 +560,8 @@
         '<img id="photoPrev" alt="Vista previa" hidden style="width:96px;height:96px;border-radius:50%;object-fit:cover;border:2px solid var(--cyan)">' +
         '<input type="file" accept="image/jpeg,image/png,image/webp" required style="flex:1 1 220px"></div>' +
         '<button class="btn" type="submit">Guardar foto</button></form>';
-      $('main').insertBefore(pc, $('main section.card'));
+      var acd = $('#availCard');
+      $('main').insertBefore(pc, acd ? acd.nextSibling : $('main section.card'));
       var pf = $('form', pc), pin = $('input', pf), prev = $('#photoPrev', pc), prevUrl = null;
       function clearPrev() {
         if (prevUrl) { URL.revokeObjectURL(prevUrl); prevUrl = null; }
@@ -576,8 +590,73 @@
       });
     }
 
-    if (blocked) { notice(blocked, true); box.innerHTML = '<div class="empty">' + esc(blocked) + '</div>'; return; }
+    if (blocked) { var ac0 = $('#availCard'); if (ac0) ac0.style.display = 'none'; notice(blocked, true); box.innerHTML = '<div class="empty">' + esc(blocked) + '</div>'; return; }
     if (!hasSub) notice('Tu suscripción no está activa. Renueva para recibir nuevas solicitudes.', true);
+
+    /* ---------- disponibilidad del piloto ---------- */
+    var amAvail = true, schedT = null, availTimer = null;
+    var hm = function (d) { return new Date(d).toLocaleTimeString('en-US', { timeZone: 'America/Lima', hour: 'numeric', minute: '2-digit', hour12: true }); };
+    function renderAvail() {
+      var st = $('#availStatus'), info = $('#schedInfo'), b1 = $('#btnAvail'), b2 = $('#btnUnavail');
+      if (!st) return;
+      st.innerHTML = amAvail
+        ? '<b style="color:#35d58a">Disponible</b> <span class="muted">· recibes solicitudes y avisos</span>'
+        : '<b style="color:#ff6577">No disponible</b> <span class="muted">· no recibes solicitudes ni avisos</span>';
+      var s = schedT && schedT.sched_start && schedT.sched_end && new Date(schedT.sched_end) > Date.now() ? schedT : null;
+      info.textContent = s ? 'Horario de hoy: ' + hm(s.sched_start) + ' a ' + hm(s.sched_end) + ' (se activa y se desactiva solo)' : 'Sin horario programado para hoy.';
+      b1.style.opacity = amAvail ? '1' : '.55'; b2.style.opacity = amAvail ? '.55' : '1';
+      b1.style.outline = amAvail ? '2px solid #fff' : 'none'; b2.style.outline = amAvail ? 'none' : '2px solid #fff';
+    }
+    function scheduleBoundary() {
+      clearTimeout(availTimer);
+      if (!schedT) return;
+      var now = Date.now();
+      var next = [schedT.sched_start, schedT.sched_end].map(function (x) { return x ? new Date(x).getTime() : 0; })
+        .filter(function (t) { return t > now; }).sort(function (a, b) { return a - b; })[0];
+      if (next && next - now < 2e9) availTimer = setTimeout(function () { lastSig = ''; refresh(true); }, next - now + 1500);
+    }
+    async function loadAvail() {
+      try {
+        var r = await sb.rpc('my_available');
+        if (r.error) throw r.error;
+        amAvail = !!r.data;
+        var tr = await sb.from('transporter_profiles').select('available,sched_start,sched_end').eq('user_id', uid).maybeSingle();
+        if (!tr.error) schedT = tr.data;
+        renderAvail();
+        scheduleBoundary();
+      } catch (e) { console.warn('disponibilidad', e); }
+    }
+    async function setAvail(v) {
+      try {
+        await rpc('set_my_available', { p_available: v });
+        notice(v ? 'Ahora estás disponible.' : 'Ahora estás no disponible.');
+        lastSig = ''; await refresh(true);
+      } catch (e) { notice(friendly(e), true); }
+    }
+    if ($('#availCard')) {
+      $('#btnAvail').addEventListener('click', function () { setAvail(true); });
+      $('#btnUnavail').addEventListener('click', function () { setAvail(false); });
+      var sf = $('#schedForm');
+      sf.addEventListener('submit', function (e) {
+        e.preventDefault();
+        withBusy(sf, async function () {
+          var d = new FormData(sf), f1 = d.get('from'), t1 = d.get('to');
+          var l = new Date(Date.now() - 5 * 36e5);
+          var ymd = l.getUTCFullYear() + '-' + pad(l.getUTCMonth() + 1) + '-' + pad(l.getUTCDate());
+          var a = new Date(ymd + 'T' + f1 + ':00-05:00'), b = new Date(ymd + 'T' + t1 + ':00-05:00');
+          if (isNaN(a) || isNaN(b)) throw new Error('Elige la hora de inicio y la de fin.');
+          if (b <= a) throw new Error('La hora final debe ser mayor que la inicial.');
+          if (b <= Date.now()) throw new Error('La hora final ya pasó. Elige una posterior a la hora actual.');
+          await rpc('set_my_schedule', { p_from: a.toISOString(), p_to: b.toISOString() });
+          notice('Horario de hoy guardado.');
+          lastSig = ''; await refresh(true);
+        });
+      });
+      $('#btnClearSched').addEventListener('click', async function () {
+        try { await rpc('clear_my_schedule'); notice('Horario quitado.'); lastSig = ''; await refresh(true); }
+        catch (e) { notice(friendly(e), true); }
+      });
+    }
 
     function availCard(s, mo) {
       var has = mo && mo.status === 'pending';
@@ -613,6 +692,7 @@
 
     var lastSig = '';
     var refresh = poll(async function (force) {
+      await loadAvail();
       var r = await sb.from('services').select('*').order('created_at', { ascending: false }).limit(100);
       if (r.error) throw r.error;
       var ro = await sb.from('offers').select('*').eq('transporter_id', uid);
@@ -625,18 +705,20 @@
       var avail = r.data.filter(function (s) { return s.status === 'requested'; });
       await loadContacts(mine);
       var sig = JSON.stringify(r.data.map(function (s) { return [s.id, s.status, s.transporter_id]; })) +
-        JSON.stringify(ro.data.map(function (o) { return [o.service_id, o.price, o.status]; })) + contacts.size;
+        JSON.stringify(ro.data.map(function (o) { return [o.service_id, o.price, o.status]; })) + contacts.size + (amAvail ? 'A' : 'N');
       if (sig === lastSig && !force) return;
       lastSig = sig;
       box.innerHTML =
         '<h3>Disponibles (' + avail.length + ')</h3>' +
         (avail.length ? avail.map(function (s) { return availCard(s, offerBy[s.id]); }).join('') : '<div class="empty">' +
-          (hasSub ? 'No hay solicitudes compatibles por ahora. Se actualiza automáticamente.' :
-            'Activa tu suscripción para ver solicitudes. <a href="suscripcion.html?role=transporter">Suscripciones</a>') + '</div>') +
+          (!hasSub ? 'Activa tu suscripción para ver solicitudes. <a href="suscripcion.html?role=transporter">Suscripciones</a>' :
+            !amAvail ? 'Estás no disponible. Pulsa «Disponible» para ver y recibir solicitudes.' :
+            'No hay solicitudes compatibles por ahora. Se actualiza al instante.') + '</div>') +
         '<h3 class="section-title">Mis servicios</h3>' +
         (mine.length ? mine.map(mineCard).join('') : '<div class="empty">Aún no has tomado servicios.</div>');
     }, 8000);
     bindActions(box, function () { lastSig = ''; return refresh(true); });
+    live(['services', 'offers'], function () { refresh(); });
   }
 
   async function complaintsPage() {
@@ -737,7 +819,10 @@
         return s.status === 'active' && s.reviewed_at && new Date(s.reviewed_at).getMonth() === now.getMonth() && new Date(s.reviewed_at).getFullYear() === now.getFullYear();
       }).reduce(function (a, s) { return a + Number(s.amount || 0); }, 0);
 
+      var availNow = null;
+      try { var ar = await sb.rpc('admin_available_pilots'); if (!ar.error && ar.data) availNow = ar.data; } catch (e) { }
       var stats = [
+        availNow ? [availNow.available + ' de ' + availNow.active, 'Pilotos disponibles ahora'] : null,
         [clients.length, 'Clientes'], [trs.length, 'Pilotos'],
         [trs.filter(function (p) { return p.account_status === 'pending'; }).length, 'Pilotos por aprobar'],
         [su.filter(function (s) { return s.status === 'pending'; }).length, 'Pagos pendientes'],
@@ -746,7 +831,44 @@
         [sv.filter(function (s) { return s.status === 'accepted' || s.status === 'in_progress'; }).length, 'Servicios en curso'],
         [sv.length, 'Servicios (total)'], [co.filter(function (c) { return c.status !== 'resolved'; }).length, 'Reclamos abiertos']
       ];
-      $('#stats').innerHTML = stats.map(function (s) { return '<div class="stat"><b>' + s[0] + '</b><span>' + s[1] + '</span></div>'; }).join('');
+      $('#stats').innerHTML = stats.filter(Boolean).map(function (s) { return '<div class="stat"><b>' + s[0] + '</b><span>' + s[1] + '</span></div>'; }).join('');
+
+      /* --- requiere atención + contadores en el menú --- */
+      var pendTr = trs.filter(function (p) { return p.account_status === 'pending'; }).length;
+      var pendPay = su.filter(function (s) { return s.status === 'pending'; }).length;
+      var openCo = co.filter(function (c) { return c.status !== 'resolved'; }).length;
+      var chip = function (n, label, href) {
+        return '<a class="btn small ' + (n ? '' : 'ghost') + '" href="' + href + '">' + label + ': ' + n + '</a>';
+      };
+      var attEl = $('#attention');
+      if (attEl) attEl.innerHTML = '<div class="card" style="padding:8px 12px;margin:8px 0"><b style="font-size:.92rem">' +
+        ((pendTr + pendPay + openCo) ? 'Requiere tu atención' : 'Todo al día') + '</b><div class="actions" style="margin-top:6px">' +
+        chip(pendTr, 'Pilotos por aprobar', '#sec-transportistas') + chip(pendPay, 'Pagos por revisar', '#sec-pagos') +
+        chip(openCo, 'Reclamos abiertos', '#sec-reclamos') + '</div></div>';
+
+      var badge = function (href, base, n) {
+        var a = document.querySelector('.admin-jump a[href="' + href + '"]');
+        if (a) a.textContent = base + (n ? ' (' + n + ')' : '');
+      };
+      badge('#sec-transportistas', 'Pilotos', pendTr); badge('#sec-pagos', 'Pagos', pendPay);
+      badge('#sec-reclamos', 'Reclamos', openCo);
+
+      /* --- datos para exportar a CSV --- */
+      var rawName = function (id) { var u = U.get(id); return u ? u.full_name : ''; };
+      view.csv = {
+        usuarios: [['Nombre', 'Correo', 'Celular', 'DNI', 'Edad', 'Rol', 'Estado', 'Registrado', 'Moto', 'Placa', 'Color', 'Servicios que ofrece', 'Suscripción vigente hasta']].concat(pr.map(function (p) {
+          var t = T.get(p.id), a = actSub[p.id];
+          return [p.full_name, p.email, p.phone, p.dni, p.age, p.role, p.account_status, fdate(p.created_at),
+            t ? t.motorcycle : '', t ? t.plate : '', t ? t.motorcycle_color : '', t ? (t.service_types || []).join(' / ') : '', a ? fdate(a.expires_at) : ''];
+        })),
+        servicios: [['ID', 'Tipo', 'Origen', 'Destino', 'Cliente', 'Piloto', 'Precio S/', 'Pago', 'Estado', 'Para cuándo', 'Creado']].concat(sv.map(function (s) {
+          return [s.id, TYPE[s.service_type], s.origin, s.destination, rawName(s.client_id), rawName(s.transporter_id), s.final_price || s.proposed_price, s.payment_method, ST[s.status] || s.status, whenText(s), fdate(s.created_at)];
+        })),
+        pagos: [['Usuario', 'Rol', 'Plan', 'Monto S/', 'Días', 'Estado', 'Solicitada', 'Vence']].concat(su.map(function (s) {
+          var u = U.get(s.user_id);
+          return [rawName(s.user_id), u ? u.role : '', planName(s.plan), s.amount, s.days, s.status, fdate(s.created_at), s.expires_at ? fdate(s.expires_at) : ''];
+        }))
+      };
 
       function userRow(p) {
         var t = T.get(p.id), btns = '', sbtns = '';
@@ -927,7 +1049,41 @@
       } catch (err) { notice(friendly(err), true); b.disabled = false; }
     });
 
+    function csvDownload(name, rows) {
+      var txt = rows.map(function (r) {
+        return r.map(function (v) {
+          v = v == null ? '' : String(v);
+          if (/^[=+\-@\t\r]/.test(v)) v = "'" + v;
+          return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+        }).join(',');
+      }).join('\r\n');
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob(['\ufeff' + txt], { type: 'text/csv;charset=utf-8' }));
+      a.download = 'lanzec-' + name + '-' + new Date().toISOString().slice(0, 10) + '.csv';
+      document.body.appendChild(a); a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+    }
+    document.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-csv]');
+      if (!b) return;
+      if (!view.csv || !view.csv[b.dataset.csv]) { notice('Los datos aún se están cargando.', true); return; }
+      csvDownload(b.dataset.csv, view.csv[b.dataset.csv]);
+    });
+
     await load();
+
+    // actualización automática: al instante por Realtime y cada 60 s como respaldo
+    var autoBusy = false;
+    async function autoLoad() {
+      if (autoBusy || document.hidden) return;
+      var ae = document.activeElement;
+      if (ae && /^(SELECT|TEXTAREA)$/.test(ae.tagName)) return;
+      autoBusy = true;
+      try { await load(); } catch (e) { console.warn(e); }
+      autoBusy = false;
+    }
+    live(['profiles', 'transporter_profiles', 'subscriptions', 'services', 'offers', 'complaints'], autoLoad);
+    setInterval(autoLoad, 60000);
   }
 
   /* ---------- arranque ---------- */
