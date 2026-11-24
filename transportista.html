@@ -408,6 +408,25 @@
         .stat b { font-size: 1.2rem }
         .stat span { font-size: .72rem }
         .actions { gap: 6px; margin-top: 8px }
+
+        /* ===== Cabecera y disponibilidad en barras ===== */
+        #headCard .hrow { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px }
+        #headCard .subbox { text-align: right; display: flex; flex-direction: column; gap: 2px; font-size: .8rem }
+        #headCard .subbox b { font-size: 1rem }
+        #headCard h1 { font-size: 1.15rem; margin: 6px 0 0 }
+        #headCard .avatar { width: 64px !important; height: 64px !important; border-radius: 50%; object-fit: cover }
+        #availCard { padding: 8px 10px }
+        #availCard .arow { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: .85rem; margin: 2px 0 }
+        #availCard .bar { display: flex; gap: 6px; align-items: center; margin: 6px 0 }
+        #availCard .bar .btn { flex: 1; padding: 6px 8px; font-size: .82rem; margin: 0 }
+        #availCard .sched { background: #0003; border-radius: 10px; padding: 4px 6px; gap: 4px; font-size: .8rem; flex-wrap: nowrap }
+        #availCard .sched input { padding: 5px 4px; font-size: .82rem; min-width: 0; flex: 1 }
+        #availCard .sched .btn { flex: 0 0 auto }
+        details.fotobar { padding: 0 }
+        details.fotobar > summary { cursor: pointer; list-style: none; padding: 10px 14px; font-weight: 700; font-size: .9rem }
+        details.fotobar > summary::after { content: " ›"; float: right }
+        details.fotobar[open] > summary::after { content: " ⌄" }
+        details.fotobar .inner { padding: 0 14px 12px }
         @media(max-width:760px) { body { font-size: 15px } .topbar { padding: 8px 12px } }
     </style>
 </head>
@@ -425,38 +444,34 @@
     <div id="notice" class="notice" hidden></div>
 
     <main class="shell">
-        <div class="split">
-            <div>
-                <h1 id="welcome">Panel de piloto</h1>
-                <p class="muted">Recibe solicitudes compatibles con los servicios que registraste.</p>
+        <section class="card" id="headCard">
+            <div class="hrow">
+                <div id="avatarSlot"></div>
+                <div class="subbox">
+                    <small>Suscripción · quedan</small>
+                    <b id="countdown">Consultando…</b>
+                    <a href="suscripcion.html?role=transporter">Renovar</a>
+                </div>
             </div>
-
-            <div class="card">
-                <small>Tiempo de suscripción</small>
-                <h2 id="countdown">Consultando…</h2>
-                <a href="suscripcion.html?role=transporter">Renovar suscripción</a>
-            </div>
-        </div>
+            <h1 id="welcome">Panel de piloto</h1>
+            <p class="muted" id="motoLine" style="margin:0"></p>
+        </section>
 
         <section class="card" id="availCard">
-            <h2>Mi disponibilidad</h2>
-            <p id="availStatus" class="muted" style="margin:4px 0">Consultando…</p>
-            <div class="actions">
+            <div class="arow"><b>Mi disponibilidad</b> <small id="availStatus" class="muted">Consultando…</small></div>
+            <div class="bar">
                 <button class="btn" id="btnAvail" type="button" style="background:#1f9d55">Disponible</button>
                 <button class="btn" id="btnUnavail" type="button" style="background:#c0392b">No disponible</button>
             </div>
-            <h3>Programar horario para hoy</h3>
-            <form id="schedForm" style="gap:8px">
-                <div class="grid" style="gap:8px">
-                    <label>Desde <input name="from" type="time" required></label>
-                    <label>Hasta <input name="to" type="time" required></label>
-                </div>
-                <div class="actions" style="margin-top:0">
-                    <button class="btn secondary small" type="submit">Guardar horario</button>
-                    <button class="btn ghost small" id="btnClearSched" type="button">Quitar horario</button>
-                </div>
-                <small id="schedInfo" class="muted"></small>
+            <form id="schedForm" class="bar sched">
+                <span>Hoy</span>
+                <input name="from" type="time" required aria-label="Desde">
+                <span>-</span>
+                <input name="to" type="time" required aria-label="Hasta">
+                <button class="btn secondary" type="submit">Guardar</button>
             </form>
+            <div class="arow"><small id="schedInfo" class="muted"></small>
+                <button class="btn ghost small" id="btnClearSched" type="button" style="display:none">Quitar horario</button></div>
         </section>
 
         <section class="card">
