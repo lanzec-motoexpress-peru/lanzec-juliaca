@@ -393,6 +393,22 @@
                 flex: 1
             }
         }
+
+        /* ===== Versión compacta para celular ===== */
+        .card { padding: 12px 14px; border-radius: 14px; margin: 10px 0 }
+        .service-card, .admin-row { padding: 10px 12px; margin: 8px 0; border-radius: 12px }
+        .shell { margin: 12px auto 36px }
+        h1 { font-size: 1.4rem; margin: 6px 0 }
+        h2 { font-size: 1.1rem }
+        h3 { font-size: 1rem; margin: 10px 0 4px }
+        .btn { padding: 9px 13px }
+        .btn.small { padding: 6px 10px; font-size: .82rem }
+        input, select, textarea { padding: 9px 10px }
+        .stat { padding: 8px 10px; border-radius: 12px }
+        .stat b { font-size: 1.2rem }
+        .stat span { font-size: .72rem }
+        .actions { gap: 6px; margin-top: 8px }
+        @media(max-width:760px) { body { font-size: 15px } .topbar { padding: 8px 12px } }
     </style>
 </head>
 <body data-page="transporter">
@@ -421,6 +437,27 @@
                 <a href="suscripcion.html?role=transporter">Renovar suscripción</a>
             </div>
         </div>
+
+        <section class="card" id="availCard">
+            <h2>Mi disponibilidad</h2>
+            <p id="availStatus" class="muted" style="margin:4px 0">Consultando…</p>
+            <div class="actions">
+                <button class="btn" id="btnAvail" type="button" style="background:#1f9d55">Disponible</button>
+                <button class="btn" id="btnUnavail" type="button" style="background:#c0392b">No disponible</button>
+            </div>
+            <h3>Programar horario para hoy</h3>
+            <form id="schedForm" style="gap:8px">
+                <div class="grid" style="gap:8px">
+                    <label>Desde <input name="from" type="time" required></label>
+                    <label>Hasta <input name="to" type="time" required></label>
+                </div>
+                <div class="actions" style="margin-top:0">
+                    <button class="btn secondary small" type="submit">Guardar horario</button>
+                    <button class="btn ghost small" id="btnClearSched" type="button">Quitar horario</button>
+                </div>
+                <small id="schedInfo" class="muted"></small>
+            </form>
+        </section>
 
         <section class="card">
             <h2>Solicitudes disponibles</h2>
