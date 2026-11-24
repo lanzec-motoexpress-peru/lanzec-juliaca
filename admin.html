@@ -436,6 +436,19 @@
             .admin-row .ok { color: #5be3a0 }
         .admin-row .warn { color: #ffc857 }
         .admin-row select { width: auto; flex: 1 1 180px; padding: 9px 10px }
+
+        /* ===== Aún más compacto ===== */
+        .card { padding: 10px 12px; border-radius: 12px }
+        .stat { padding: 7px 9px }
+        .stat b { font-size: 1.15rem }
+        .stat span { font-size: .68rem }
+        .admin-row { padding: 8px 10px; margin: 6px 0 }
+        .btn { padding: 8px 12px }
+        .btn.small { padding: 6px 9px; font-size: .8rem }
+        .grid.three { gap: 6px }
+        .admin-jump a { padding: 6px 9px }
+        .shell { margin: 8px auto 30px }
+        @media(max-width:760px) { body { font-size: 15px } .topbar { padding: 8px 12px } .actions .btn { padding: 7px 8px } }
     </style>
 </head>
 
@@ -464,6 +477,8 @@
 
         <h1 id="welcome">Panel de administración</h1>
 
+        <div id="attention"></div>
+
         <div id="stats" class="grid three"></div>
 
         <div class="admin-tools">
@@ -471,6 +486,11 @@
             <button id="adminRefresh" class="btn secondary small" type="button">⟳</button>
         </div>
         <small id="adminUpdated" class="muted"></small>
+        <div class="actions" style="margin:6px 0 0">
+            <button class="btn ghost small" type="button" data-csv="usuarios">Descargar usuarios (CSV)</button>
+            <button class="btn ghost small" type="button" data-csv="servicios">Descargar servicios (CSV)</button>
+            <button class="btn ghost small" type="button" data-csv="pagos">Descargar pagos (CSV)</button>
+        </div>
 
         <nav class="admin-jump">
             <a class="btn ghost small" href="#sec-clientes">Clientes</a>
