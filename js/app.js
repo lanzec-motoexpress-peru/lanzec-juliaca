@@ -827,8 +827,15 @@
         return s.status === 'active' && s.reviewed_at && new Date(s.reviewed_at).getMonth() === now.getMonth() && new Date(s.reviewed_at).getFullYear() === now.getFullYear();
       }).reduce(function (a, s) { return a + Number(s.amount || 0); }, 0);
 
-      var availNow = null;
-      try { var ar = await sb.rpc('admin_available_pilots'); if (!ar.error && ar.data) availNow = ar.data; } catch (e) { }
+      var availNow = null, AV = null;
+      try {
+        var ar = await sb.rpc('admin_pilots_status');
+        if (!ar.error && Array.isArray(ar.data)) {
+          AV = new Map(ar.data.map(function (x) { return [x.user_id, x]; }));
+          availNow = { available: ar.data.filter(function (x) { return x.available; }).length };
+        }
+      } catch (e) { }
+      if (!availNow) { try { var ar2 = await sb.rpc('admin_available_pilots'); if (!ar2.error && ar2.data) availNow = ar2.data; } catch (e) { } }
       var stats = [
         [clients.length, 'Clientes'],
         [trs.filter(function (p) { return p.account_status === 'active'; }).length, 'Pilotos'],
@@ -852,7 +859,17 @@
       };
       badge('#sec-transportistas', 'Pilotos', pendTr); badge('#sec-pagos', 'Pagos', pendPay);
       badge('#sec-reclamos', 'Reclamos', openCo);
+      if (AV) badge('#sec-disponibles', 'Disponibles', availNow.available);
 
+      var hmL = function (d) { return new Date(d).toLocaleTimeString('en-US', { timeZone: 'America/Lima', hour: 'numeric', minute: '2-digit', hour12: true }); };
+      function schedTxt(a) {
+        return a && a.sched_start && a.sched_end && new Date(a.sched_end) > Date.now() ? '<small>Horario: ' + hmL(a.sched_start) + ' a ' + hmL(a.sched_end) + '</small>' : '';
+      }
+      function avTag(p) {
+        if (!AV || p.role !== 'transporter' || p.account_status !== 'active') return '';
+        var a = AV.get(p.id); if (!a) return '';
+        return '<small>' + (a.available ? '<span class="av-on">Disponible</span>' : '<span class="av-off">No disponible</span>') + '</small>' + schedTxt(a);
+      }
       function userRow(p) {
         var t = T.get(p.id), btns = '', sbtns = '';
         var b = function (label, v, cls) { return '<button class="btn ' + (cls || '') + ' small" data-a="status" data-id="' + p.id + '" data-v="' + v + '">' + label + '</button>'; };
@@ -876,6 +893,7 @@
         var ph = t && t.photo_path ? '<img class="avatar" alt="Foto de ' + esc(p.full_name) + '" title="Toca para ver la foto" data-zoom="' + esc(photoUrl(t.photo_path)) + '" data-caption="' + esc(p.full_name) + '" src="' + esc(photoUrl(t.photo_path)) + '" style="cursor:zoom-in">' : '';
         return '<div class="admin-row"><div class="urow">' + ph +
           '<div class="nm"><b>' + esc(p.full_name) + '</b></div><span class="pill">' + (SL[p.account_status] || esc(p.account_status)) + '</span></div>' +
+          avTag(p) +
           '<small>Cel ' + esc(p.phone) + ' · DNI ' + esc(p.dni) + ' · ' + esc(p.age) + ' años</small>' +
           '<small>' + esc(p.email) + '</small>' +
           (t ? '<small>' + esc(t.motorcycle) + ' · ' + esc(t.motorcycle_color) + ' · Placa ' + esc(t.plate) + '</small><small>' + esc((t.service_types || []).join(', ')) + '</small>' : '') +
@@ -887,7 +905,8 @@
       var empty = '<div class="empty">Sin registros.</div>';
       var rank = function (p) { return p.account_status === 'pending' || pendSub[p.id] ? 0 : 1; };
       clients = clients.slice().sort(function (a, b) { return rank(a) - rank(b); });
-      trs = trs.slice().sort(function (a, b) { return rank(a) - rank(b); });
+      var avR = function (p) { var a = AV && AV.get(p.id); return a && a.available ? 0 : 1; };
+      trs = trs.slice().sort(function (a, b) { return rank(a) - rank(b) || avR(a) - avR(b); });
       function renderUsers() {
         var q = norm((($('#adminSearch') || {}).value || '').trim());
         var ok = function (p) {
@@ -902,6 +921,22 @@
         };
         show(clients, '#adminClients', '#cnt-clients');
         show(trs, '#adminTransporters', '#cnt-trs');
+        var avEl = $('#adminAvail');
+        if (avEl) {
+          var avl = AV ? trs.filter(function (p) { var a = AV.get(p.id); return a && a.available; }) : [];
+          var avs = avl.filter(ok);
+          avEl.innerHTML = !AV ? '<div class="empty">Falta ejecutar 06_admin_disponibles.sql en Supabase.</div>' :
+            avs.length ? avs.map(function (p) {
+              var t = T.get(p.id), a = AV.get(p.id);
+              var ph = t && t.photo_path ? '<img class="avatar" alt="Foto de ' + esc(p.full_name) + '" data-zoom="' + esc(photoUrl(t.photo_path)) + '" data-caption="' + esc(p.full_name) + '" src="' + esc(photoUrl(t.photo_path)) + '" style="cursor:zoom-in">' : '';
+              return '<div class="admin-row"><div class="urow">' + ph + '<div class="nm"><b>' + esc(p.full_name) + '</b></div></div>' +
+                '<small><span class="av-on">Disponible</span></small>' + schedTxt(a) +
+                '<small>Cel ' + esc(p.phone) + '</small>' +
+                (t ? '<small>' + esc(t.motorcycle) + ' · ' + esc(t.motorcycle_color) + ' · Placa ' + esc(t.plate) + '</small>' : '') +
+                '<div class="actions">' + waLink(p.phone) + '</div></div>';
+            }).join('') : '<div class="empty">No hay pilotos disponibles ahora.</div>';
+          var cd = $('#cnt-disp'); if (cd) cd.textContent = AV ? '(' + avl.length + ')' : '';
+        }
       }
       view.renderUsers = renderUsers;
       renderUsers();
