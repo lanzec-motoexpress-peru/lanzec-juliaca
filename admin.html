@@ -464,6 +464,8 @@
         .urow .nm { flex: 1; min-width: 0 }
         .admin-row small { display: block; font-size: .76rem }
         .section-title { font-size: 1rem; margin: 10px 0 4px }
+        .av-on { color: #35d58a; font-weight: 700 }
+        .av-off { color: #ff6577; font-weight: 700 }
         @media(max-width:760px) { body { font-size: 15px } .topbar { padding: 8px 12px } .actions .btn { padding: 7px 8px } }
     </style>
 </head>
@@ -504,6 +506,7 @@
         <nav class="admin-jump">
             <a class="btn ghost small" href="#sec-clientes">Clientes</a>
             <a class="btn ghost small" href="#sec-transportistas">Pilotos</a>
+            <a class="btn ghost small" href="#sec-disponibles">Disponibles</a>
             <a class="btn ghost small" href="#sec-servicios">Servicios</a>
             <a class="btn ghost small" href="#sec-pagos">Pagos</a>
             <a class="btn ghost small" href="#sec-reclamos">Reclamos</a>
@@ -518,6 +521,11 @@
         <div class="tabsec" id="tab-sec-transportistas">
             <h2 class="section-title" id="sec-transportistas">Pilotos <small id="cnt-trs"></small></h2>
             <div id="adminTransporters"></div>
+        </div>
+
+        <div class="tabsec" id="tab-sec-disponibles">
+            <h2 class="section-title" id="sec-disponibles">Pilotos disponibles ahora <small id="cnt-disp"></small></h2>
+            <div id="adminAvail"></div>
         </div>
 
         <div class="tabsec" id="tab-sec-pagos">
